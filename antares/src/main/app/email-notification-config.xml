@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:smtp="http://www.mulesoft.org/schema/mule/smtp"
+	xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smtp/current/mule-smtp.xsd">
+
+
+	<flow name="email-notification-configFlow">
+		<jms:inbound-endpoint connector-ref="Active_MQ"
+			queue="notification.email" doc:name="JMS" />
+		<set-variable value="#[message.id]" variableName="correlationID"
+			doc:name="Variable" />
+		<set-property value="emailNotification" propertyName="type"
+			doc:name="Property" />
+		<set-property value="#[correlationID]" propertyName="messageID"
+			doc:name="Property" />
+		<vm:outbound-endpoint exchange-pattern="one-way"
+			path="log.request" connector-ref="GrayLog_VM" doc:name="VM" />
+		<set-variable variableName="from" value="#[payload.from]"
+			doc:name="Variable" />
+		<set-variable variableName="to" value="#[payload.to]"
+			doc:name="Variable" />
+		<set-variable variableName="subject" value="#[payload.subject]"
+			doc:name="Variable" />
+		<logger level="INFO"
+			message="[SENDING Email Notification to : #[to], Subject : #[subject]]" />
+		<set-payload value="#[payload.body]" />
+		<message-properties-transformer>
+			<add-message-property key="subject"
+				value="#[flowVars['subject']]" />
+			<add-message-property key="content-type" value="text/plain" />
+		</message-properties-transformer>
+		<smtp:outbound-endpoint user="arie@jatelindo.com"
+			connector-ref="SMTP" password="${notification.email.password}" host="${notification.email.host}"
+			port="${notification.email.port}" to="#[to]" from="#[from]">
+			<email:string-to-email-transformer />
+		</smtp:outbound-endpoint>
+		<object-to-string-transformer />
+		<set-property value="emailNotification" propertyName="type"
+			doc:name="Property" />
+		<set-property value="#[correlationID]" propertyName="messageID"
+			doc:name="Property" />
+		<expression-component doc:name="Expression">
+			<![CDATA[
+			responseMap = new java.util.HashMap();
+			responseMap['status']= 'PROCESSED' ;
+			responseMap['subject']= flowVars['subject'] ;
+			responseMap['from']= flowVars['from'] ;
+			responseMap['to']= flowVars['to'] ;
+			payload = responseMap;]]>
+		</expression-component>
+		<vm:outbound-endpoint exchange-pattern="one-way"
+			path="log.response" connector-ref="GrayLog_VM" doc:name="VM" />
+	</flow>
+
+</mule>

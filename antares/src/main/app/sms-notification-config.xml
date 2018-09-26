@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:management="http://www.mulesoft.org/schema/mule/management"
+	xmlns:jetty="http://www.mulesoft.org/schema/mule/jetty" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml"
+	xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:vm="http://www.mulesoft.org/schema/mule/vm"
+	xmlns:cxf="http://www.mulesoft.org/schema/mule/cxf" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/cxf http://www.mulesoft.org/schema/mule/cxf/current/mule-cxf.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+http://www.mulesoft.org/schema/mule/jetty http://www.mulesoft.org/schema/mule/jetty/current/mule-jetty.xsd
+http://www.mulesoft.org/schema/mule/management http://www.mulesoft.org/schema/mule/management/current/mule-management.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd">
+
+	<http:request-config name="HTTP_Request_Configuration"
+		protocol="HTTPS" host="${notification.sms.url}" port="${notification.sms.port}"
+		doc:name="HTTP Request Configuration">
+		<http:basic-authentication username="${notification.sms.username}"
+			password="${notification.sms.password}" />
+	</http:request-config>
+
+	<flow name="sms-notification-configFlow">
+		<jms:inbound-endpoint connector-ref="Active_MQ"
+			queue="notification.sms" doc:name="JMS" />
+		<set-variable value="#[message.id]" variableName="correlationID"
+			doc:name="Variable" />
+		<set-variable value="${notification.sms.masking}"
+			variableName="masking" doc:name="Variable" />
+		<logger level="INFO"
+			message="[SENDING SMS Notification To : #[payload['to']]]" doc:name="Logger" />
+		<expression-component doc:name="Expression">
+			<![CDATA[
+			responseMap = new java.util.HashMap();
+			responseMap['text']= payload['text'] ;
+			responseMap['destination']= payload['to'];
+			responseMap['source']= flowVars['masking'];
+			payload = responseMap;]]>
+		</expression-component>
+		<set-property value="smsNotification" propertyName="type"
+			doc:name="Property" />
+		<set-property value="#[correlationID]" propertyName="messageID"
+			doc:name="Property" />
+		<vm:outbound-endpoint exchange-pattern="one-way"
+			path="log.request" connector-ref="GrayLog_VM" doc:name="VM" />
+		<json:object-to-json-transformer
+			doc:name="Object to JSON" />
+		<logger message="[SMS Notification Request : #[payload]]"
+			level="INFO" doc:name="Logger" />
+		<http:request config-ref="HTTP_Request_Configuration"
+			path="sms/v1/Jatelindo_5uU59_hq/single" method="POST" doc:name="HTTP">
+			<http:success-status-code-validator
+				values="200,400,401,500" />
+		</http:request>
+		<byte-array-to-string-transformer
+			doc:name="Byte Array to String" />
+		<logger level="INFO" message="[SMS Notification Response : #[payload]]"
+			doc:name="Logger" />
+		<set-property value="smsNotification" propertyName="type"
+			doc:name="Property" />
+		<set-property value="#[correlationID]" propertyName="messageID"
+			doc:name="Property" />
+		<vm:outbound-endpoint exchange-pattern="one-way"
+			path="log.response" connector-ref="GrayLog_VM" doc:name="VM" />
+	</flow>
+
+</mule>
